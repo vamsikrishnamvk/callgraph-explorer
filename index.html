@@ -1,637 +1,811 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Call Graph Explorer</title>
+<meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>Code Explorer</title>
 <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg:       #0d1117;
-    --surface:  #161b22;
-    --border:   #30363d;
-    --text:     #e6edf3;
-    --muted:    #8b949e;
-    --accent:   #58a6ff;
-    --green:    #3fb950;
-    --orange:   #d29922;
-    --red:      #f85149;
-    --purple:   #bc8cff;
-    --node-focus:   #58a6ff;
-    --node-callee:  #3fb950;
-    --node-caller:  #d29922;
-    --node-ext:     #6e7681;
-    --link-color:   #444c56;
-  }
-  html, body, #root { height: 100%; width: 100%; overflow: hidden; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-         background: var(--bg); color: var(--text); font-size: 13px; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;
+  --accent:#58a6ff;--green:#3fb950;--orange:#d29922;--red:#f85149;--purple:#bc8cff;
+}
+html,body,#root{height:100%;width:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);font-size:13px}
 
-  /* ── Layout ── */
-  .layout { display: flex; height: 100vh; }
-  .sidebar { width: 320px; min-width: 260px; max-width: 400px;
-             background: var(--surface); border-right: 1px solid var(--border);
-             display: flex; flex-direction: column; overflow: hidden; }
-  .main    { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+/* Layout */
+.layout{display:flex;height:100vh}
+.sidebar{width:300px;min-width:240px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
 
-  /* ── Topbar ── */
-  .topbar { height: 44px; background: var(--surface); border-bottom: 1px solid var(--border);
-            display: flex; align-items: center; padding: 0 16px; gap: 10px; flex-shrink: 0; }
-  .repo-badge { font-weight: 600; font-size: 14px; color: var(--accent); }
-  .stats-badge { font-size: 11px; color: var(--muted); margin-left: auto; }
+/* Topbar */
+.topbar{height:42px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0}
+.repo-badge{font-weight:700;font-size:13px;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats-pill{font-size:10px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px 8px;white-space:nowrap;flex-shrink:0}
 
-  /* ── Breadcrumb ── */
-  .breadcrumb { display: flex; align-items: center; padding: 6px 14px;
-                background: var(--bg); border-bottom: 1px solid var(--border);
-                flex-shrink: 0; gap: 4px; overflow-x: auto; white-space: nowrap; min-height: 34px; }
-  .breadcrumb::-webkit-scrollbar { height: 4px; }
-  .breadcrumb::-webkit-scrollbar-thumb { background: var(--border); }
-  .bc-item { color: var(--accent); cursor: pointer; font-size: 12px; }
-  .bc-item:hover { text-decoration: underline; }
-  .bc-sep { color: var(--muted); font-size: 11px; }
-  .bc-current { color: var(--text); font-size: 12px; font-weight: 600; }
-  .bc-empty { color: var(--muted); font-size: 12px; font-style: italic; }
+/* Tab bar */
+.tab-bar{display:flex;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
+.tab-btn{padding:9px 18px;font-size:12px;font-weight:600;background:none;border:none;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:color .15s}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-btn:hover:not(.active){color:var(--text)}
 
-  /* ── Graph canvas ── */
-  .graph-wrap { flex: 1; position: relative; overflow: hidden; }
-  #graph-svg { width: 100%; height: 100%; cursor: grab; }
-  #graph-svg:active { cursor: grabbing; }
+/* Breadcrumb */
+.breadcrumb{display:flex;align-items:center;padding:5px 12px;background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0;gap:4px;overflow-x:auto;white-space:nowrap;min-height:32px}
+.breadcrumb::-webkit-scrollbar{height:3px}
+.breadcrumb::-webkit-scrollbar-thumb{background:var(--border)}
+.bc-item{color:var(--accent);cursor:pointer;font-size:11px}.bc-item:hover{text-decoration:underline}
+.bc-sep{color:var(--muted);font-size:10px}
+.bc-current{color:var(--text);font-size:11px;font-weight:600}
+.bc-empty{color:var(--muted);font-size:11px;font-style:italic}
 
-  /* ── Sidebar: search ── */
-  .search-section { padding: 12px; border-bottom: 1px solid var(--border); }
-  .search-input { width: 100%; background: var(--bg); border: 1px solid var(--border);
-                  color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px;
-                  outline: none; }
-  .search-input:focus { border-color: var(--accent); }
-  .search-results { margin-top: 6px; max-height: 240px; overflow-y: auto; }
-  .search-results::-webkit-scrollbar { width: 4px; }
-  .search-results::-webkit-scrollbar-thumb { background: var(--border); }
-  .search-item { padding: 6px 8px; border-radius: 4px; cursor: pointer;
-                 border-bottom: 1px solid var(--border); }
-  .search-item:hover { background: var(--border); }
-  .search-item-name { font-weight: 600; color: var(--text); }
-  .search-item-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
-  .search-placeholder { color: var(--muted); font-size: 12px; padding: 8px; text-align: center; }
+/* Graph */
+.graph-wrap{flex:1;position:relative;overflow:hidden}
+#graph-svg{width:100%;height:100%;cursor:grab}
+#graph-svg:active{cursor:grabbing}
 
-  /* ── Sidebar: function detail ── */
-  .detail-section { flex: 1; overflow-y: auto; padding: 12px; }
-  .detail-section::-webkit-scrollbar { width: 4px; }
-  .detail-section::-webkit-scrollbar-thumb { background: var(--border); }
-  .detail-empty { color: var(--muted); font-size: 12px; text-align: center; margin-top: 40px; }
+/* Search */
+.search-wrap{padding:10px;border-bottom:1px solid var(--border)}
+.search-input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:12px;outline:none}
+.search-input:focus{border-color:var(--accent)}
+.search-results{margin-top:5px;max-height:220px;overflow-y:auto}
+.search-results::-webkit-scrollbar{width:3px}
+.search-results::-webkit-scrollbar-thumb{background:var(--border)}
+.s-item{padding:5px 8px;cursor:pointer;border-bottom:1px solid var(--border)}
+.s-item:hover{background:var(--border)}
+.s-item-name{font-weight:600;font-size:12px;color:var(--text)}
+.s-item-meta{font-size:10px;color:var(--muted);margin-top:1px}
+.s-placeholder{color:var(--muted);font-size:11px;padding:8px;text-align:center}
 
-  .fn-title { font-size: 15px; font-weight: 700; color: var(--text); word-break: break-all; }
-  .fn-recv  { font-size: 12px; color: var(--purple); margin-top: 2px; }
-  .fn-meta  { margin-top: 8px; }
-  .fn-meta-row { display: flex; gap: 6px; margin-bottom: 4px; align-items: baseline; }
-  .fn-label { font-size: 11px; color: var(--muted); min-width: 52px; }
-  .fn-value { font-size: 12px; color: var(--text); word-break: break-all; }
-  .fn-link  { color: var(--accent); cursor: pointer; font-size: 12px; }
-  .fn-link:hover { text-decoration: underline; }
+/* Detail panel */
+.detail{flex:1;overflow-y:auto;padding:12px}
+.detail::-webkit-scrollbar{width:3px}
+.detail::-webkit-scrollbar-thumb{background:var(--border)}
+.detail-empty{color:var(--muted);font-size:12px;text-align:center;margin-top:40px}
+.fn-title{font-size:14px;font-weight:700;word-break:break-all}
+.fn-recv{font-size:11px;color:var(--purple);margin-top:2px}
+.meta-row{display:flex;gap:6px;margin-bottom:3px;align-items:baseline}
+.meta-lbl{font-size:10px;color:var(--muted);min-width:52px}
+.meta-val{font-size:11px;word-break:break-all}
+.sec-title{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:12px 0 5px;display:flex;align-items:center;gap:5px}
+.badge{background:var(--border);color:var(--text);border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700}
+.list-item{padding:4px 7px;border-radius:3px;cursor:pointer;border:1px solid transparent;margin-bottom:1px}
+.list-item:hover{background:var(--border)}
+.list-item-name{font-weight:600;font-size:11px}
+.list-item-sub{font-size:10px;color:var(--muted)}
+.callee-item .list-item-name{color:var(--green)}
+.caller-item .list-item-name{color:var(--orange)}
 
-  .section-title { font-size: 11px; font-weight: 600; color: var(--muted);
-                   text-transform: uppercase; letter-spacing: .05em;
-                   margin: 14px 0 6px; display: flex; align-items: center; gap: 6px; }
-  .count-badge { background: var(--border); color: var(--text); border-radius: 10px;
-                 padding: 1px 7px; font-size: 10px; font-weight: 700; }
+/* Load button */
+.load-section{padding:10px;border-top:1px solid var(--border);flex-shrink:0}
+.load-btn{width:100%;background:var(--accent);color:#0d1117;border:none;border-radius:5px;padding:7px;font-size:11px;font-weight:700;cursor:pointer}
+.load-btn:hover{opacity:.85}
+.load-btn-ghost{width:100%;background:none;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:7px;font-size:11px;cursor:pointer;margin-top:4px}
+.load-btn-ghost:hover{color:var(--text);border-color:var(--text)}
 
-  .fn-list { display: flex; flex-direction: column; gap: 2px; }
-  .fn-list-item { padding: 5px 8px; border-radius: 4px; cursor: pointer;
-                  border: 1px solid transparent; }
-  .fn-list-item:hover { background: var(--border); border-color: var(--border); }
-  .fn-list-item .item-name { font-weight: 600; font-size: 12px; }
-  .fn-list-item .item-pkg  { font-size: 11px; color: var(--muted); }
-  .callee-item .item-name  { color: var(--green); }
-  .caller-item .item-name  { color: var(--orange); }
+/* Drop zone */
+.drop-zone{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+.drop-title{font-size:16px;font-weight:700}
+.drop-sub{font-size:12px;color:var(--muted);text-align:center;line-height:1.7}
 
-  /* ── Drop zone ── */
-  .drop-zone { flex: 1; display: flex; flex-direction: column; align-items: center;
-               justify-content: center; gap: 14px; }
-  .drop-title { font-size: 18px; font-weight: 700; color: var(--text); }
-  .drop-sub   { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.6; }
-  .drop-btn   { background: var(--accent); color: #0d1117; border: none; border-radius: 6px;
-                padding: 10px 20px; font-size: 13px; font-weight: 600; cursor: pointer; }
-  .drop-btn:hover { opacity: .85; }
-  .drop-hint  { font-size: 11px; color: var(--muted); }
-  #file-input { display: none; }
+/* Legend */
+.legend{position:absolute;bottom:12px;right:12px;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:7px 11px;display:flex;gap:12px}
+.leg-item{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted)}
+.leg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
 
-  /* ── Loading ── */
-  .loading { flex: 1; display: flex; flex-direction: column; align-items: center;
-             justify-content: center; gap: 12px; }
-  .spinner { width: 36px; height: 36px; border: 3px solid var(--border);
-             border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+/* Loading */
+.loading{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 
-  /* ── Legend ── */
-  .legend { position: absolute; bottom: 14px; right: 14px;
-            background: var(--surface); border: 1px solid var(--border);
-            border-radius: 8px; padding: 8px 12px; display: flex; gap: 14px; }
-  .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
-  .leg-dot  { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+/* ── Hotspot specific ────────────────────────────────────────────────── */
+.hotspot-layout{flex:1;display:flex;overflow:hidden}
+.hotspot-sidebar{width:300px;min-width:240px;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;background:var(--surface)}
+.hotspot-main{flex:1;position:relative;overflow:hidden}
+.hs-filter{padding:8px 10px;border-bottom:1px solid var(--border)}
+.hs-filter input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:11px;outline:none}
+.hs-filter input:focus{border-color:var(--accent)}
+.hs-table-wrap{flex:1;overflow-y:auto}
+.hs-table-wrap::-webkit-scrollbar{width:3px}
+.hs-table-wrap::-webkit-scrollbar-thumb{background:var(--border)}
+table.hs-table{width:100%;border-collapse:collapse;font-size:11px}
+table.hs-table thead{position:sticky;top:0;z-index:2;background:var(--surface)}
+table.hs-table th{padding:5px 8px;text-align:left;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+table.hs-table th:hover{color:var(--text)}
+table.hs-table th.sort-active{color:var(--accent)}
+table.hs-table td{padding:4px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+table.hs-table tr:hover td{background:var(--border);cursor:pointer}
+table.hs-table tr.hs-selected td{background:#1f2d3d}
+.heat-bar-wrap{width:50px}
+.heat-bar{height:5px;border-radius:3px}
+.hs-path{font-size:10px;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-  /* ── Tooltip ── */
-  #tooltip { position: fixed; pointer-events: none; background: var(--surface);
-             border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px;
-             font-size: 12px; line-height: 1.6; z-index: 999; display: none; max-width: 300px; }
+/* Treemap breadcrumb */
+.tm-breadcrumb{display:flex;align-items:center;padding:5px 12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;gap:4px;min-height:30px;overflow-x:auto;white-space:nowrap}
+.tm-bc-item{color:var(--accent);cursor:pointer;font-size:11px}.tm-bc-item:hover{text-decoration:underline}
+.tm-bc-current{font-size:11px;font-weight:600;color:var(--text)}
+
+/* Heatmap legend */
+.heat-legend{position:absolute;bottom:12px;right:12px;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:8px 12px}
+.heat-grad{width:110px;height:7px;border-radius:3px;background:linear-gradient(to right,#1a4c2a,#d29922,#f85149);margin-bottom:4px}
+.heat-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--muted)}
+
+/* Tooltip */
+#tooltip{position:fixed;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:11px;line-height:1.6;z-index:999;display:none;max-width:280px}
 </style>
 </head>
 <body>
 <div id="root"></div>
 <div id="tooltip"></div>
-
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
-// ── Fuzzy search ──────────────────────────────────────────────────────────────
-function fuzzyMatch(str, query) {
-  const s = str.toLowerCase(), q = query.toLowerCase();
-  if (s.includes(q)) return true;
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function fuzzyMatch(str, q) {
+  const s = str.toLowerCase(), query = q.toLowerCase();
+  if (s.includes(query)) return true;
   let si = 0, qi = 0;
-  while (si < s.length && qi < q.length) {
-    if (s[si] === q[qi]) qi++;
-    si++;
-  }
-  return qi === q.length;
+  while (si < s.length && qi < query.length) { if (s[si] === query[qi]) qi++; si++; }
+  return qi === query.length;
 }
 
-// ── Package colour map ────────────────────────────────────────────────────────
-const PKG_COLOURS = [
-  "#58a6ff","#3fb950","#d29922","#bc8cff","#f78166",
-  "#39d353","#79c0ff","#ffa657","#ff7b72","#56d364",
-];
+const PKG_COLORS = ["#58a6ff","#3fb950","#d29922","#bc8cff","#f78166","#39d353","#79c0ff","#ffa657","#ff7b72","#56d364"];
 const pkgColorCache = {};
 let pkgColorIdx = 0;
 function pkgColor(pkg) {
-  if (!pkgColorCache[pkg]) pkgColorCache[pkg] = PKG_COLOURS[pkgColorIdx++ % PKG_COLOURS.length];
+  if (!pkgColorCache[pkg]) pkgColorCache[pkg] = PKG_COLORS[pkgColorIdx++ % PKG_COLORS.length];
   return pkgColorCache[pkg];
 }
 
-// ── Graph component (D3 controlled SVG) ──────────────────────────────────────
+function churnColor(score) {
+  return d3.interpolateRgb("#1a4c2a", "#f85149")(score);
+}
+
+function showTip(html, e) {
+  const tip = document.getElementById("tooltip");
+  tip.style.display = "block";
+  tip.innerHTML = html;
+  tip.style.left = (e.clientX + 14) + "px";
+  tip.style.top  = (e.clientY - 8)  + "px";
+}
+function moveTip(e) {
+  const tip = document.getElementById("tooltip");
+  tip.style.left = (e.clientX + 14) + "px";
+  tip.style.top  = (e.clientY - 8)  + "px";
+}
+function hideTip() { document.getElementById("tooltip").style.display = "none"; }
+
+// ── D3 Force Graph (used by both Call Graph and Dep Graph tabs) ───────────────
 function Graph({ graphData, onNodeClick }) {
   const svgRef = useRef(null);
-  const simRef = useRef(null);
 
   useEffect(() => {
     if (!graphData || !svgRef.current) return;
-
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
-
     const W = svgRef.current.clientWidth  || 800;
     const H = svgRef.current.clientHeight || 600;
-
     const g = svg.append("g");
 
-    // Zoom + pan
-    const zoom = d3.zoom().scaleExtent([0.1, 4])
-      .on("zoom", (e) => g.attr("transform", e.transform));
-    svg.call(zoom);
+    svg.call(d3.zoom().scaleExtent([0.1, 4]).on("zoom", e => g.attr("transform", e.transform)));
 
-    // Arrow markers
     const defs = svg.append("defs");
-    ["callee", "caller", "ext"].forEach(t => {
-      defs.append("marker")
-        .attr("id", `arrow-${t}`)
-        .attr("viewBox", "0 -5 10 10")
-        .attr("refX", 22).attr("refY", 0)
-        .attr("markerWidth", 6).attr("markerHeight", 6)
-        .attr("orient", "auto")
-        .append("path")
-        .attr("d", "M0,-5L10,0L0,5")
-        .attr("fill", t === "callee" ? "#3fb950" : t === "caller" ? "#d29922" : "#444c56");
+    ["callee","caller"].forEach(t => {
+      defs.append("marker").attr("id","arrow-"+t)
+        .attr("viewBox","0 -5 10 10").attr("refX",22).attr("refY",0)
+        .attr("markerWidth",6).attr("markerHeight",6).attr("orient","auto")
+        .append("path").attr("d","M0,-5L10,0L0,5")
+        .attr("fill", t === "callee" ? "#3fb950" : "#d29922");
     });
 
-    const nodes = graphData.nodes.map(d => ({ ...d }));
-    const links = graphData.links.map(d => ({ ...d }));
+    const nodes = graphData.nodes.map(d => ({...d}));
+    const links = graphData.links.map(d => ({...d}));
 
-    // Fix focus node at center
     const focus = nodes.find(n => n.role === "focus");
-    if (focus) { focus.fx = W / 2; focus.fy = H / 2; }
+    if (focus) { focus.fx = W/2; focus.fy = H/2; }
 
-    // Simulation
     const sim = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links).id(d => d.id).distance(120).strength(0.8))
-      .force("charge", d3.forceManyBody().strength(-400))
-      .force("x", d3.forceX(W / 2).strength(n => n.role === "focus" ? 0 : 0.05))
-      .force("y", d3.forceY(H / 2).strength(n => n.role === "focus" ? 0 : 0.05))
-      .force("collide", d3.forceCollide(30));
-    simRef.current = sim;
+      .force("link",    d3.forceLink(links).id(d => d.id).distance(130).strength(0.8))
+      .force("charge",  d3.forceManyBody().strength(-350))
+      .force("x",       d3.forceX(W/2).strength(n => n.role === "focus" ? 0 : 0.05))
+      .force("y",       d3.forceY(H/2).strength(n => n.role === "focus" ? 0 : 0.05))
+      .force("collide", d3.forceCollide(32));
 
-    // Links
     const link = g.append("g").selectAll("line").data(links).enter().append("line")
       .attr("stroke", d => {
-        const src = nodes.find(n => n.id === (d.source.id || d.source));
         const tgt = nodes.find(n => n.id === (d.target.id || d.target));
-        if (tgt && tgt.role === "callee") return "#3fb950";
-        if (src && src.role === "caller") return "#d29922";
-        return "#444c56";
+        return tgt?.role === "callee" ? "#3fb950" : "#d29922";
       })
-      .attr("stroke-width", 1.5)
-      .attr("stroke-opacity", 0.6)
+      .attr("stroke-width", 1.5).attr("stroke-opacity", 0.55)
       .attr("marker-end", d => {
         const tgt = nodes.find(n => n.id === (d.target.id || d.target));
-        return tgt && tgt.role === "callee" ? "url(#arrow-callee)" : "url(#arrow-caller)";
+        return "url(#arrow-" + (tgt?.role === "callee" ? "callee" : "caller") + ")";
       });
 
-    // Node groups
     const nodeG = g.append("g").selectAll("g").data(nodes).enter().append("g")
-      .attr("cursor", "pointer")
+      .attr("cursor","pointer")
       .call(d3.drag()
-        .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-        .on("drag",  (e, d) => { d.fx = e.x; d.fy = e.y; })
-        .on("end",   (e, d) => { if (!e.active) sim.alphaTarget(0); if (d.role !== "focus") { d.fx = null; d.fy = null; } })
-      )
-      .on("click", (e, d) => { e.stopPropagation(); onNodeClick(d.id); })
-      .on("mouseover", (e, d) => {
-        const tip = document.getElementById("tooltip");
-        tip.style.display = "block";
-        tip.innerHTML = `<strong>${d.name}</strong><br/><span style="color:#8b949e">${d.pkg}</span><br/>${d.file}:${d.line}`;
-      })
-      .on("mousemove", (e) => {
-        const tip = document.getElementById("tooltip");
-        tip.style.left = (e.clientX + 14) + "px";
-        tip.style.top  = (e.clientY - 8)  + "px";
-      })
-      .on("mouseout", () => { document.getElementById("tooltip").style.display = "none"; });
+        .on("start",(e,d)=>{ if(!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+        .on("drag", (e,d)=>{ d.fx=e.x; d.fy=e.y; })
+        .on("end",  (e,d)=>{ if(!e.active) sim.alphaTarget(0); if(d.role!=="focus"){d.fx=null;d.fy=null;} }))
+      .on("click",(e,d)=>{ e.stopPropagation(); onNodeClick(d.id); })
+      .on("mouseover",(e,d)=>{ showTip(`<strong>${d.name}</strong><br/><span style="color:var(--muted)">${d.pkg}</span><br/>${d.file}:${d.line}`, e); })
+      .on("mousemove", moveTip).on("mouseout", hideTip);
 
-    // Circles
     nodeG.append("circle")
-      .attr("r", d => d.role === "focus" ? 22 : 14)
-      .attr("fill", d => {
-        if (d.role === "focus")   return "#1f6feb";
-        if (d.role === "callee")  return "#1a4c2a";
-        if (d.role === "caller")  return "#4a3000";
-        return "#21262d";
-      })
-      .attr("stroke", d => {
-        if (d.role === "focus")   return "#58a6ff";
-        if (d.role === "callee")  return "#3fb950";
-        if (d.role === "caller")  return "#d29922";
-        return "#444c56";
-      })
-      .attr("stroke-width", d => d.role === "focus" ? 3 : 1.5);
+      .attr("r", d => d.role==="focus" ? 22 : 13)
+      .attr("fill", d => d.role==="focus"?"#1f6feb":d.role==="callee"?"#1a4c2a":d.role==="caller"?"#4a3000":"#21262d")
+      .attr("stroke", d => d.role==="focus"?"#58a6ff":d.role==="callee"?"#3fb950":d.role==="caller"?"#d29922":"#444c56")
+      .attr("stroke-width", d => d.role==="focus"?3:1.5);
 
-    // Package colour ring
     nodeG.append("circle")
-      .attr("r", d => d.role === "focus" ? 26 : 17)
-      .attr("fill", "none")
-      .attr("stroke", d => pkgColor(d.pkg))
-      .attr("stroke-width", 2)
-      .attr("stroke-opacity", 0.5)
-      .attr("stroke-dasharray", d => d.role === "focus" ? "none" : "3,2");
+      .attr("r", d => d.role==="focus"?27:17).attr("fill","none")
+      .attr("stroke", d => pkgColor(d.pkg)).attr("stroke-width",1.5)
+      .attr("stroke-opacity",0.45).attr("stroke-dasharray","4,2");
 
-    // Labels
-    nodeG.append("text")
-      .attr("text-anchor", "middle")
-      .attr("dy", d => d.role === "focus" ? 38 : 27)
-      .attr("fill", "#e6edf3")
-      .attr("font-size", d => d.role === "focus" ? "12px" : "11px")
-      .attr("font-weight", d => d.role === "focus" ? "700" : "400")
-      .text(d => d.name.length > 20 ? d.name.slice(0, 18) + "…" : d.name);
+    nodeG.append("text").attr("text-anchor","middle")
+      .attr("dy", d => d.role==="focus"?37:25)
+      .attr("fill","#e6edf3")
+      .attr("font-size", d => d.role==="focus"?"12px":"10px")
+      .attr("font-weight", d => d.role==="focus"?"700":"400")
+      .attr("pointer-events","none")
+      .text(d => d.name.length > 18 ? d.name.slice(0,16)+"…" : d.name);
 
-    // Role badge
-    nodeG.append("text")
-      .attr("text-anchor", "middle")
-      .attr("dy", d => d.role === "focus" ? 50 : 37)
-      .attr("fill", "#6e7681")
-      .attr("font-size", "9px")
-      .text(d => d.role === "focus" ? d.pkg : "");
-
-    // Tick
-    sim.on("tick", () => {
-      link
-        .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
-        .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
-      nodeG.attr("transform", d => `translate(${d.x},${d.y})`);
+    sim.on("tick",()=>{
+      link.attr("x1",d=>d.source.x).attr("y1",d=>d.source.y)
+          .attr("x2",d=>d.target.x).attr("y2",d=>d.target.y);
+      nodeG.attr("transform",d=>`translate(${d.x},${d.y})`);
     });
-
-    // Initial zoom to fit
-    svg.call(zoom.transform, d3.zoomIdentity.translate(0, 0).scale(1));
-
-    return () => { sim.stop(); };
+    return () => sim.stop();
   }, [graphData]);
 
   return <svg id="graph-svg" ref={svgRef} />;
 }
 
-// ── Sidebar ───────────────────────────────────────────────────────────────────
-function Sidebar({ callgraph, focusId, onNavigate, search, setSearch, searchResults }) {
-  const fn = focusId && callgraph ? callgraph.functions[focusId] : null;
-
-  const callees = useMemo(() => {
-    if (!fn || !callgraph) return [];
-    return (fn.calls || []).map(id => callgraph.functions[id]).filter(Boolean);
-  }, [fn, callgraph]);
-
-  const callers = useMemo(() => {
-    if (!fn || !callgraph) return [];
-    return (fn.callers || []).map(id => callgraph.functions[id]).filter(Boolean);
-  }, [fn, callgraph]);
+// ── Sidebar (call graph) ──────────────────────────────────────────────────────
+function Sidebar({ data, focusId, onNavigate, search, setSearch, searchResults }) {
+  const fn = focusId && data ? data.functions[focusId] : null;
+  const callees = useMemo(()=> fn ? (fn.calls||[]).map(id=>data.functions[id]).filter(Boolean) : [], [fn,data]);
+  const callers = useMemo(()=> fn ? (fn.callers||[]).map(id=>data.functions[id]).filter(Boolean) : [], [fn,data]);
 
   return (
     <>
-      {/* Search */}
-      <div className="search-section">
-        <input
-          className="search-input"
-          placeholder="Search functions…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+      <div className="search-wrap">
+        <input className="search-input" placeholder="Search functions…" value={search} onChange={e=>setSearch(e.target.value)} />
         {search.length > 0 && (
           <div className="search-results">
             {searchResults.length === 0
-              ? <div className="search-placeholder">No results</div>
-              : searchResults.slice(0, 80).map(f => (
-                  <div key={f.id} className="search-item" onClick={() => { onNavigate(f.id); setSearch(""); }}>
-                    <div className="search-item-name">{f.name}</div>
-                    <div className="search-item-meta">{f.pkg} · {f.file}:{f.line}</div>
-                  </div>
-                ))
-            }
-          </div>
-        )}
+              ? <div className="s-placeholder">No results</div>
+              : searchResults.slice(0,80).map(f=>(
+                  <div key={f.id} className="s-item" onClick={()=>{onNavigate(f.id);setSearch("");}}>
+                    <div className="s-item-name">{f.name}</div>
+                    <div className="s-item-meta">{f.pkg} · {f.file}:{f.line}</div>
+                  </div>))}
+          </div>)}
       </div>
-
-      {/* Function detail */}
-      <div className="detail-section">
-        {!fn ? (
-          <div className="detail-empty">Search or click a node to explore</div>
-        ) : (
+      <div className="detail">
+        {!fn ? <div className="detail-empty">Search or click a node</div> : (
           <>
             <div className="fn-title">{fn.name}</div>
             {fn.recv && <div className="fn-recv">({fn.recv})</div>}
-            <div className="fn-meta">
-              <div className="fn-meta-row">
-                <span className="fn-label">Package</span>
-                <span className="fn-value" style={{color: pkgColor(fn.pkg)}}>{fn.pkg}</span>
-              </div>
-              <div className="fn-meta-row">
-                <span className="fn-label">File</span>
-                <span className="fn-value fn-link">{fn.file}:{fn.line}</span>
-              </div>
+            <div style={{marginTop:8}}>
+              <div className="meta-row"><span className="meta-lbl">Package</span><span className="meta-val" style={{color:pkgColor(fn.pkg)}}>{fn.pkg}</span></div>
+              <div className="meta-row"><span className="meta-lbl">File</span><span className="meta-val" style={{color:"var(--accent)"}}>{fn.file}:{fn.line}</span></div>
             </div>
-
-            {/* Callees */}
-            <div className="section-title">
-              Calls
-              <span className="count-badge">{callees.length}</span>
-            </div>
-            {callees.length === 0
-              ? <div style={{color:"var(--muted)",fontSize:11}}>No internal calls</div>
-              : <div className="fn-list">
-                  {callees.map(c => (
-                    <div key={c.id} className="fn-list-item callee-item" onClick={() => onNavigate(c.id)}>
-                      <div className="item-name">{c.name}</div>
-                      <div className="item-pkg">{c.pkg}</div>
-                    </div>
-                  ))}
-                </div>
-            }
-
-            {/* Callers */}
-            <div className="section-title">
-              Called by
-              <span className="count-badge">{callers.length}</span>
-            </div>
-            {callers.length === 0
-              ? <div style={{color:"var(--muted)",fontSize:11}}>No known callers</div>
-              : <div className="fn-list">
-                  {callers.map(c => (
-                    <div key={c.id} className="fn-list-item caller-item" onClick={() => onNavigate(c.id)}>
-                      <div className="item-name">{c.name}</div>
-                      <div className="item-pkg">{c.pkg}</div>
-                    </div>
-                  ))}
-                </div>
-            }
-          </>
-        )}
+            <div className="sec-title">Calls <span className="badge">{callees.length}</span></div>
+            {callees.length===0 ? <div style={{color:"var(--muted)",fontSize:10}}>No internal calls</div>
+              : callees.map(c=>(
+                <div key={c.id} className="list-item callee-item" onClick={()=>onNavigate(c.id)}>
+                  <div className="list-item-name">{c.name}</div>
+                  <div className="list-item-sub">{c.pkg}</div>
+                </div>))}
+            <div className="sec-title">Called by <span className="badge">{callers.length}</span></div>
+            {callers.length===0 ? <div style={{color:"var(--muted)",fontSize:10}}>No known callers</div>
+              : callers.map(c=>(
+                <div key={c.id} className="list-item caller-item" onClick={()=>onNavigate(c.id)}>
+                  <div className="list-item-name">{c.name}</div>
+                  <div className="list-item-sub">{c.pkg}</div>
+                </div>))}
+          </>)}
       </div>
     </>
   );
 }
 
-// ── Main App ──────────────────────────────────────────────────────────────────
-function App() {
-  const [callgraph, setCallgraph]   = useState(null);
-  const [loading, setLoading]       = useState(false);
-  const [focusId, setFocusId]       = useState(null);
-  const [history, setHistory]       = useState([]);   // stack of previous focusIds
-  const [search, setSearch]         = useState("");
-  const fileInputRef = useRef(null);
-
-  // Try to auto-load callgraph.json on mount
-  useEffect(() => {
-    setLoading(true);
-    fetch("callgraph.json")
-      .then(r => { if (!r.ok) throw new Error("not found"); return r.json(); })
-      .then(data => { setCallgraph(data); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
-
-  // Navigate to a function (push history)
-  const navigate = useCallback((id) => {
-    setFocusId(prev => {
-      if (prev) setHistory(h => [...h, prev]);
-      return id;
-    });
-  }, []);
-
-  // Breadcrumb back
-  const goBack = useCallback((idx) => {
-    setHistory(h => {
-      const prev = h[idx];
-      setFocusId(prev);
-      return h.slice(0, idx);
-    });
-  }, []);
-
-  // Build graph data for the D3 component
-  const graphData = useMemo(() => {
-    if (!callgraph || !focusId) return null;
-    const fn = callgraph.functions[focusId];
-    if (!fn) return null;
-
-    const nodesMap = {};
-    const links = [];
-
-    nodesMap[focusId] = { ...fn, id: focusId, role: "focus" };
-
-    (fn.calls || []).forEach(calleeId => {
-      const callee = callgraph.functions[calleeId];
-      if (callee && !nodesMap[calleeId]) {
-        nodesMap[calleeId] = { ...callee, id: calleeId, role: "callee" };
-      }
-      if (callgraph.functions[calleeId]) {
-        links.push({ source: focusId, target: calleeId });
-      }
-    });
-
-    (fn.callers || []).forEach(callerId => {
-      const caller = callgraph.functions[callerId];
-      if (caller && !nodesMap[callerId]) {
-        nodesMap[callerId] = { ...caller, id: callerId, role: "caller" };
-      }
-      if (callgraph.functions[callerId]) {
-        links.push({ source: callerId, target: focusId });
-      }
-    });
-
-    return { nodes: Object.values(nodesMap), links };
-  }, [callgraph, focusId]);
-
-  // Search results
-  const searchResults = useMemo(() => {
-    if (!callgraph || search.length < 2) return [];
-    return Object.values(callgraph.functions)
-      .filter(f => fuzzyMatch(f.name, search) || fuzzyMatch(f.pkg, search))
-      .slice(0, 100);
-  }, [callgraph, search]);
-
-  // Load from file picker
-  const loadFile = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setLoading(true);
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const data = JSON.parse(ev.target.result);
-        setCallgraph(data);
-        setFocusId(null);
-        setHistory([]);
-      } catch { alert("Invalid JSON file"); }
-      setLoading(false);
-    };
-    reader.readAsText(file);
-  };
-
-  // ── Render ──
-  const breadcrumbItems = [...history, focusId].filter(Boolean);
-
-  if (loading) {
-    return (
-      <div className="layout">
-        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:14}}>
-          <div className="spinner" />
-          <div style={{color:"var(--muted)"}}>Loading callgraph.json…</div>
-        </div>
-      </div>
-    );
-  }
+// ── Sidebar (dep graph) ───────────────────────────────────────────────────────
+function DepSidebar({ data, focusId, onNavigate, search, setSearch, searchResults }) {
+  const pkg = focusId && data ? data.packages[focusId] : null;
+  const imports    = useMemo(()=> pkg ? (pkg.imports||[]).map(id=>data.packages[id]).filter(Boolean) : [], [pkg,data]);
+  const importedBy = useMemo(()=> pkg ? (pkg.importedBy||[]).map(id=>data.packages[id]).filter(Boolean) : [], [pkg,data]);
 
   return (
+    <>
+      <div className="search-wrap">
+        <input className="search-input" placeholder="Search packages…" value={search} onChange={e=>setSearch(e.target.value)} />
+        {search.length > 0 && (
+          <div className="search-results">
+            {searchResults.length === 0
+              ? <div className="s-placeholder">No results</div>
+              : searchResults.slice(0,80).map(p=>(
+                  <div key={p.id} className="s-item" onClick={()=>{onNavigate(p.id);setSearch("");}}>
+                    <div className="s-item-name">{p.name}</div>
+                    <div className="s-item-meta">{p.dir} · {p.files} files</div>
+                  </div>))}
+          </div>)}
+      </div>
+      <div className="detail">
+        {!pkg ? <div className="detail-empty">Search or click a package node</div> : (
+          <>
+            <div className="fn-title">{pkg.name}</div>
+            <div style={{marginTop:8}}>
+              <div className="meta-row"><span className="meta-lbl">Dir</span><span className="meta-val" style={{color:pkgColor(pkg.dir.split("/")[0]||pkg.name)}}>{pkg.dir}</span></div>
+              <div className="meta-row"><span className="meta-lbl">Files</span><span className="meta-val">{pkg.files}</span></div>
+            </div>
+            <div className="sec-title">Imports <span className="badge">{imports.length}</span></div>
+            {imports.length===0 ? <div style={{color:"var(--muted)",fontSize:10}}>No internal imports</div>
+              : imports.map(p=>(
+                <div key={p.id} className="list-item callee-item" onClick={()=>onNavigate(p.id)}>
+                  <div className="list-item-name">{p.name}</div>
+                  <div className="list-item-sub">{p.dir}</div>
+                </div>))}
+            <div className="sec-title">Imported by <span className="badge">{importedBy.length}</span></div>
+            {importedBy.length===0 ? <div style={{color:"var(--muted)",fontSize:10}}>Nothing imports this</div>
+              : importedBy.map(p=>(
+                <div key={p.id} className="list-item caller-item" onClick={()=>onNavigate(p.id)}>
+                  <div className="list-item-name">{p.name}</div>
+                  <div className="list-item-sub">{p.dir}</div>
+                </div>))}
+          </>)}
+      </div>
+    </>
+  );
+}
+
+// ── D3 Treemap ────────────────────────────────────────────────────────────────
+function Treemap({ data, zoomPath, onZoom, onFileClick, selectedPath }) {
+  const svgRef = useRef(null);
+
+  useEffect(() => {
+    if (!data || !svgRef.current) return;
+    const svg = d3.select(svgRef.current);
+    svg.selectAll("*").remove();
+    const W = svgRef.current.clientWidth  || 800;
+    const H = svgRef.current.clientHeight || 600;
+
+    // Find subtree for current zoom
+    function findNode(node, path) {
+      if (!path || path === ".") return node;
+      if (node.path === path) return node;
+      if (!node.children) return null;
+      for (const c of node.children) { const f = findNode(c, path); if (f) return f; }
+      return null;
+    }
+    const treeRoot = findNode(data.tree, zoomPath) || data.tree;
+
+    const root = d3.hierarchy(treeRoot)
+      .sum(d => d.isDir ? 0 : Math.max(d.lines || 1, 1))
+      .sort((a, b) => b.value - a.value);
+
+    d3.treemap().size([W, H]).paddingOuter(3).paddingTop(18).paddingInner(1).round(true)(root);
+
+    // Directory background rects (for click-to-zoom)
+    svg.selectAll(".dir-bg")
+      .data(root.descendants().filter(d => d.depth > 0 && d.children))
+      .enter().append("rect").attr("class","dir-bg")
+      .attr("x", d=>d.x0).attr("y",d=>d.y0)
+      .attr("width",d=>Math.max(0,d.x1-d.x0)).attr("height",d=>Math.max(0,d.y1-d.y0))
+      .attr("fill","transparent").attr("stroke","#30363d").attr("stroke-width",0.5)
+      .style("cursor","pointer")
+      .on("click",(e,d)=>{ e.stopPropagation(); onZoom(d.data.path); })
+      .on("mouseover",(e,d)=>showTip(`<strong>${d.data.path}</strong><br/>Files: ${d.leaves().length} · LOC: ${d.data.lines.toLocaleString()} · Peak churn: ${d.data.commits}`,e))
+      .on("mousemove",moveTip).on("mouseout",hideTip);
+
+    // Directory labels
+    svg.selectAll(".dir-lbl")
+      .data(root.descendants().filter(d => d.depth > 0 && d.children))
+      .enter().append("text").attr("class","dir-lbl")
+      .attr("x",d=>d.x0+4).attr("y",d=>d.y0+12)
+      .attr("fill","#8b949e").attr("font-size","10px").attr("font-weight","600")
+      .attr("pointer-events","none")
+      .text(d=>{
+        const w = d.x1-d.x0;
+        const name = d.data.name;
+        const max = Math.floor(w/6);
+        return w > 35 ? (name.length>max ? name.slice(0,max-1)+"…" : name) : "";
+      });
+
+    // File leaves
+    const leaves = svg.selectAll(".leaf")
+      .data(root.leaves()).enter().append("rect").attr("class","leaf")
+      .attr("x",d=>d.x0+1).attr("y",d=>d.y0+1)
+      .attr("width",d=>Math.max(0,d.x1-d.x0-2)).attr("height",d=>Math.max(0,d.y1-d.y0-2))
+      .attr("fill",d=>churnColor(d.data.churnScore||0))
+      .attr("rx",2)
+      .attr("stroke",d=>d.data.path===selectedPath?"#fff":"none")
+      .attr("stroke-width",d=>d.data.path===selectedPath?2:0)
+      .style("cursor","pointer")
+      .on("click",(e,d)=>{ e.stopPropagation(); onFileClick(d.data); })
+      .on("mouseover",(e,d)=>showTip(`<strong>${d.data.name}</strong><br/><span style="color:var(--muted)">${d.data.path}</span><br/>Commits: <b>${d.data.commits}</b> · Authors: ${d.data.authors||"?"} · LOC: ${d.data.lines.toLocaleString()}`,e))
+      .on("mousemove",moveTip).on("mouseout",hideTip);
+
+    // File labels (only in large enough cells)
+    svg.selectAll(".leaf-lbl")
+      .data(root.leaves()).enter().append("text").attr("class","leaf-lbl")
+      .attr("x",d=>d.x0+(d.x1-d.x0)/2).attr("y",d=>d.y0+(d.y1-d.y0)/2+4)
+      .attr("text-anchor","middle").attr("fill","rgba(230,237,243,0.85)")
+      .attr("font-size","9px").attr("pointer-events","none")
+      .text(d=>{
+        const w=d.x1-d.x0, h=d.y1-d.y0;
+        if(w<28||h<12) return "";
+        const max=Math.floor(w/5.5);
+        return d.data.name.length>max ? d.data.name.slice(0,max-1)+"…" : d.data.name;
+      });
+  }, [data, zoomPath, selectedPath]);
+
+  return <svg ref={svgRef} style={{width:"100%",height:"100%"}} />;
+}
+
+// ── Hotspot table (sidebar) ───────────────────────────────────────────────────
+function HotspotTable({ data, selectedPath, onSelect }) {
+  const [filter,  setFilter]  = useState("");
+  const [sortKey, setSortKey] = useState("commits");
+  const [sortDir, setSortDir] = useState(-1);
+
+  const rows = useMemo(() => {
+    if (!data) return [];
+    return [...data.files]
+      .filter(f => f.lines > 0 && (!filter || fuzzyMatch(f.path, filter)))
+      .sort((a,b) => sortDir * (b[sortKey] - a[sortKey]));
+  }, [data, filter, sortKey, sortDir]);
+
+  function toggleSort(key) {
+    if (sortKey === key) setSortDir(d => -d);
+    else { setSortKey(key); setSortDir(-1); }
+  }
+  const arrow = key => sortKey===key ? (sortDir===-1?" ↓":" ↑") : "";
+
+  return (
+    <>
+      <div className="hs-filter">
+        <input placeholder="Filter files…" value={filter} onChange={e=>setFilter(e.target.value)} />
+      </div>
+      <div className="hs-table-wrap">
+        <table className="hs-table">
+          <thead>
+            <tr>
+              <th style={{width:"55%"}}>File</th>
+              <th className={sortKey==="commits"?"sort-active":""} onClick={()=>toggleSort("commits")}>Commits{arrow("commits")}</th>
+              <th className={sortKey==="authors"?"sort-active":""} onClick={()=>toggleSort("authors")}>Authors{arrow("authors")}</th>
+              <th className={sortKey==="lines"?"sort-active":""} onClick={()=>toggleSort("lines")}>LOC{arrow("lines")}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.slice(0, 500).map(f => (
+              <tr key={f.path} className={f.path===selectedPath?"hs-selected":""} onClick={()=>onSelect(f)}>
+                <td>
+                  <div style={{fontWeight:600,fontSize:11}}>{f.path.split("/").pop()}</div>
+                  <div className="hs-path">{f.dir}</div>
+                </td>
+                <td style={{color:f.churnScore>0.7?"var(--red)":f.churnScore>0.3?"var(--orange)":"var(--green)",fontWeight:600}}>{f.commits}</td>
+                <td>{f.authors}</td>
+                <td>{f.lines.toLocaleString()}</td>
+                <td className="heat-bar-wrap">
+                  <div className="heat-bar" style={{width:Math.round(f.churnScore*48)+"px",background:churnColor(f.churnScore)}} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {rows.length > 500 && <div style={{padding:"8px",color:"var(--muted)",fontSize:10,textAlign:"center"}}>Showing top 500 of {rows.length}</div>}
+      </div>
+    </>
+  );
+}
+
+// ── Hotspot view (full tab) ───────────────────────────────────────────────────
+function HotspotView({ data }) {
+  const [zoomPath,  setZoomPath]  = useState(null);
+  const [zoomStack, setZoomStack] = useState([]);
+  const [selected,  setSelected]  = useState(null);
+
+  function zoomIn(path) {
+    if (!path || path === ".") return;
+    setZoomStack(s => [...s, zoomPath]);
+    setZoomPath(path);
+  }
+  function zoomUp(idx) {
+    setZoomStack(s => {
+      const prev = s[idx];
+      setZoomPath(prev);
+      return s.slice(0, idx);
+    });
+  }
+
+  // Build breadcrumb from zoomPath
+  const crumbs = useMemo(() => {
+    if (!zoomPath || zoomPath === ".") return [];
+    return zoomPath.split("/").reduce((acc, part, i) => {
+      acc.push({ label: part, path: acc.length ? acc[acc.length-1].path + "/" + part : part });
+      return acc;
+    }, []);
+  }, [zoomPath]);
+
+  if (!data) return (
+    <div className="drop-zone" style={{flex:1}}>
+      <div className="drop-title" style={{fontSize:14}}>No hotspot.json loaded</div>
+      <div className="drop-sub">Run: <code style={{color:"var(--accent)"}}>parse.exe --mode hotspot --repo ../teleport</code></div>
+    </div>
+  );
+
+  return (
+    <div className="hotspot-layout">
+      <div className="hotspot-sidebar">
+        <div style={{padding:"8px 10px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+          <span style={{fontSize:11,color:"var(--muted)"}}>
+            {data.files.filter(f=>f.lines>0).length.toLocaleString()} files · generated {data.generated?.slice(0,10)}
+          </span>
+        </div>
+        <HotspotTable data={data} selectedPath={selected?.path} onSelect={f=>{setSelected(f);}} />
+      </div>
+      <div className="hotspot-main" style={{display:"flex",flexDirection:"column"}}>
+        {/* Treemap breadcrumb */}
+        <div className="tm-breadcrumb">
+          <span className="tm-bc-item" onClick={()=>zoomUp(0)}>{data.repo}</span>
+          {crumbs.map((c,i) => (
+            <React.Fragment key={c.path}>
+              <span className="bc-sep">›</span>
+              {i === crumbs.length-1
+                ? <span className="tm-bc-current">{c.label}</span>
+                : <span className="tm-bc-item" onClick={()=>zoomUp(zoomStack.length-(crumbs.length-i))}>{c.label}</span>}
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{flex:1,position:"relative"}}>
+          <Treemap data={data} zoomPath={zoomPath} onZoom={zoomIn} onFileClick={f=>setSelected(f)} selectedPath={selected?.path} />
+          <div className="heat-legend">
+            <div className="heat-grad" />
+            <div className="heat-labels"><span>Low churn</span><span>High churn</span></div>
+            <div style={{fontSize:9,color:"var(--muted)",marginTop:4}}>Size = lines of code</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+function App() {
+  const [activeTab,    setActiveTab]    = useState("callgraph");
+  const [cgData,       setCgData]       = useState(null);
+  const [depsData,     setDepsData]     = useState(null);
+  const [hotspotData,  setHotspotData]  = useState(null);
+  const [tabLoading,   setTabLoading]   = useState({});
+
+  // Per-tab navigation state
+  const [cgFocus,   setCgFocus]   = useState(null);
+  const [cgHistory, setCgHistory] = useState([]);
+  const [cgSearch,  setCgSearch]  = useState("");
+  const [depFocus,  setDepFocus]  = useState(null);
+  const [depHistory,setDepHistory]= useState([]);
+  const [depSearch, setDepSearch] = useState("");
+
+  const fileInputRef = useRef(null);
+
+  // Auto-load callgraph.json on mount
+  useEffect(() => {
+    setTabLoading(t=>({...t,callgraph:true}));
+    fetch("callgraph.json")
+      .then(r=>{ if(!r.ok) throw 0; return r.json(); })
+      .then(d=>setCgData(d))
+      .catch(()=>{})
+      .finally(()=>setTabLoading(t=>({...t,callgraph:false})));
+  }, []);
+
+  // Lazy-load on tab switch
+  useEffect(() => {
+    const map = { deps:["deps.json",depsData,setDepsData], hotspot:["hotspot.json",hotspotData,setHotspotData] };
+    if (!map[activeTab]) return;
+    const [url, state, setter] = map[activeTab];
+    if (state !== null || tabLoading[activeTab]) return;
+    setTabLoading(t=>({...t,[activeTab]:true}));
+    fetch(url)
+      .then(r=>{ if(!r.ok) throw 0; return r.json(); })
+      .then(d=>setter(d))
+      .catch(()=>{})
+      .finally(()=>setTabLoading(t=>({...t,[activeTab]:false})));
+  }, [activeTab]);
+
+  function navigate(setFocus, setHistory) {
+    return (id) => {
+      setFocus(prev => { if (prev) setHistory(h=>[...h,prev]); return id; });
+    };
+  }
+  function goBack(setFocus, setHistory, history, idx) {
+    setHistory(h=>{ setFocus(h[idx]); return h.slice(0,idx); });
+  }
+
+  // Graph data builders
+  const cgGraphData = useMemo(() => {
+    if (!cgData || !cgFocus) return null;
+    const fn = cgData.functions[cgFocus]; if (!fn) return null;
+    const nodesMap = { [cgFocus]: {...fn, id:cgFocus, role:"focus"} };
+    const links = [];
+    (fn.calls||[]).forEach(id=>{ const c=cgData.functions[id]; if(c&&!nodesMap[id]){nodesMap[id]={...c,id,role:"callee"};} if(cgData.functions[id]) links.push({source:cgFocus,target:id}); });
+    (fn.callers||[]).forEach(id=>{ const c=cgData.functions[id]; if(c&&!nodesMap[id]){nodesMap[id]={...c,id,role:"caller"};} if(cgData.functions[id]) links.push({source:id,target:cgFocus}); });
+    return { nodes:Object.values(nodesMap), links };
+  }, [cgData, cgFocus]);
+
+  const depGraphData = useMemo(() => {
+    if (!depsData || !depFocus) return null;
+    const pkg = depsData.packages[depFocus]; if (!pkg) return null;
+    const topDir = d => d.dir.split("/")[0] || d.name;
+    const nodesMap = { [depFocus]: {id:depFocus,name:pkg.name,pkg:topDir(pkg),file:pkg.dir,line:pkg.files,role:"focus"} };
+    const links = [];
+    (pkg.imports||[]).forEach(id=>{ const p=depsData.packages[id]; if(p&&!nodesMap[id]){nodesMap[id]={id,name:p.name,pkg:topDir(p),file:p.dir,line:p.files,role:"callee"};} links.push({source:depFocus,target:id}); });
+    (pkg.importedBy||[]).forEach(id=>{ const p=depsData.packages[id]; if(p&&!nodesMap[id]){nodesMap[id]={id,name:p.name,pkg:topDir(p),file:p.dir,line:p.files,role:"caller"};} links.push({source:id,target:depFocus}); });
+    return { nodes:Object.values(nodesMap), links };
+  }, [depsData, depFocus]);
+
+  const cgSearchResults = useMemo(() => {
+    if (!cgData || cgSearch.length < 2) return [];
+    return Object.values(cgData.functions).filter(f=>fuzzyMatch(f.name,cgSearch)||fuzzyMatch(f.pkg,cgSearch)).slice(0,100);
+  }, [cgData, cgSearch]);
+
+  const depSearchResults = useMemo(() => {
+    if (!depsData || depSearch.length < 2) return [];
+    return Object.values(depsData.packages).filter(p=>fuzzyMatch(p.name,depSearch)||fuzzyMatch(p.dir,depSearch)).slice(0,100);
+  }, [depsData, depSearch]);
+
+  function loadFile(e, setter) {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => { try { setter(JSON.parse(ev.target.result)); } catch { alert("Invalid JSON"); } };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
+  function repoName() {
+    if (activeTab==="callgraph" && cgData) return cgData.repo;
+    if (activeTab==="deps"      && depsData) return depsData.repo;
+    if (activeTab==="hotspot"   && hotspotData) return hotspotData.repo;
+    return "Code Explorer";
+  }
+  function statsText() {
+    if (activeTab==="callgraph" && cgData) return `${cgData.totalFunctions?.toLocaleString()} fns · ${cgData.totalFiles?.toLocaleString()} files`;
+    if (activeTab==="deps"      && depsData) return `${depsData.totalPackages} packages`;
+    if (activeTab==="hotspot"   && hotspotData) return `${hotspotData.files?.length.toLocaleString()} files tracked`;
+    return "";
+  }
+
+  const cgHistory_ = [...cgHistory, cgFocus].filter(Boolean);
+  const depHistory_ = [...depHistory, depFocus].filter(Boolean);
+
+  const isLoading = tabLoading[activeTab];
+
+  // ── Render ──
+  return (
     <div className="layout">
-      {/* Sidebar */}
+      {/* ── Sidebar ── */}
       <div className="sidebar">
         <div className="topbar">
-          <span className="repo-badge">{callgraph ? callgraph.repo : "Call Graph Explorer"}</span>
-          {callgraph && (
-            <span className="stats-badge">
-              {callgraph.totalFunctions.toLocaleString()} fns · {callgraph.totalFiles.toLocaleString()} files
-            </span>
-          )}
+          <span className="repo-badge">{repoName()}</span>
+          {statsText() && <span className="stats-pill">{statsText()}</span>}
         </div>
 
-        {callgraph ? (
-          <Sidebar
-            callgraph={callgraph}
-            focusId={focusId}
-            onNavigate={navigate}
-            search={search}
-            setSearch={setSearch}
-            searchResults={searchResults}
-          />
-        ) : (
-          <div style={{padding:16}}>
-            <div style={{color:"var(--muted)",fontSize:12,lineHeight:1.6}}>
-              Load a <strong style={{color:"var(--text)"}}>callgraph.json</strong> file to start exploring.
-            </div>
-          </div>
-        )}
+        {activeTab==="callgraph" && (cgData
+          ? <Sidebar data={cgData} focusId={cgFocus} onNavigate={navigate(setCgFocus,setCgHistory)} search={cgSearch} setSearch={setCgSearch} searchResults={cgSearchResults} />
+          : <div className="detail"><div className="detail-empty">{isLoading?"Loading…":"No callgraph.json found"}</div></div>)}
 
-        {/* File load button always visible */}
-        <div style={{padding:12,borderTop:"1px solid var(--border)",flexShrink:0}}>
-          <input type="file" id="file-input" ref={fileInputRef} accept=".json" onChange={loadFile} />
-          <button className="drop-btn" style={{width:"100%",fontSize:12}}
-            onClick={() => fileInputRef.current.click()}>
-            {callgraph ? "Load different callgraph.json" : "Open callgraph.json"}
+        {activeTab==="deps" && (depsData
+          ? <DepSidebar data={depsData} focusId={depFocus} onNavigate={navigate(setDepFocus,setDepHistory)} search={depSearch} setSearch={setDepSearch} searchResults={depSearchResults} />
+          : <div className="detail"><div className="detail-empty">{isLoading?"Loading…":"No deps.json found"}</div></div>)}
+
+        {activeTab==="hotspot" && <div className="detail"><div className="detail-empty" style={{marginTop:12}}>See heatmap →</div></div>}
+
+        <div className="load-section">
+          <input type="file" ref={fileInputRef} accept=".json" style={{display:"none"}}
+            onChange={e => {
+              if (activeTab==="callgraph") loadFile(e, d=>{ setCgData(d); setCgFocus(null); setCgHistory([]); });
+              if (activeTab==="deps")      loadFile(e, d=>{ setDepsData(d); setDepFocus(null); setDepHistory([]); });
+              if (activeTab==="hotspot")   loadFile(e, d=>setHotspotData(d));
+            }} />
+          <button className="load-btn" onClick={()=>fileInputRef.current.click()}>
+            Open {activeTab}.json
           </button>
         </div>
       </div>
 
-      {/* Main */}
+      {/* ── Main ── */}
       <div className="main">
-        <div className="topbar" style={{borderLeft:"none"}}>
-          {/* Breadcrumb */}
-          <div className="breadcrumb" style={{flex:1,border:"none",padding:0,background:"transparent"}}>
-            {breadcrumbItems.length === 0
-              ? <span className="bc-empty">Select a function to start</span>
-              : breadcrumbItems.map((id, i) => {
-                  const isLast = i === breadcrumbItems.length - 1;
-                  const fn = callgraph?.functions[id];
-                  return (
-                    <React.Fragment key={id + i}>
-                      {i > 0 && <span className="bc-sep">›</span>}
-                      {isLast
-                        ? <span className="bc-current">{fn?.name || id}</span>
-                        : <span className="bc-item" onClick={() => goBack(i)}>{fn?.name || id}</span>
-                      }
-                    </React.Fragment>
-                  );
-                })
-            }
-          </div>
-          {history.length > 0 && (
-            <button onClick={() => goBack(history.length - 1)}
-              style={{background:"var(--border)",border:"none",color:"var(--text)",
-                      padding:"4px 10px",borderRadius:4,cursor:"pointer",fontSize:11,flexShrink:0}}>
-              ← Back
-            </button>
-          )}
+        <div className="tab-bar">
+          {[["callgraph","Call Graph"],["deps","Dep Graph"],["hotspot","Hotspots"]].map(([id,label])=>(
+            <button key={id} className={"tab-btn"+(activeTab===id?" active":"")} onClick={()=>setActiveTab(id)}>{label}</button>
+          ))}
         </div>
 
-        {/* Graph or placeholder */}
-        <div className="graph-wrap">
-          {!callgraph ? (
-            <div className="drop-zone">
-              <div className="drop-title">Call Graph Explorer</div>
-              <div className="drop-sub">
-                Run the Go parser to generate <strong>callgraph.json</strong>,<br/>
-                then serve this folder with Python and open in browser.
-              </div>
-              <button className="drop-btn" onClick={() => fileInputRef.current?.click()}>
-                Open callgraph.json
-              </button>
-              <div className="drop-hint">or run: python -m http.server 8080</div>
+        {/* ── Call Graph tab ── */}
+        {activeTab==="callgraph" && (
+          <>
+            <div className="breadcrumb">
+              {cgHistory_.length === 0
+                ? <span className="bc-empty">Search a function to start</span>
+                : cgHistory_.map((id,i) => {
+                    const isLast = i===cgHistory_.length-1;
+                    const fn = cgData?.functions[id];
+                    return (
+                      <React.Fragment key={id+i}>
+                        {i>0 && <span className="bc-sep">›</span>}
+                        {isLast
+                          ? <span className="bc-current">{fn?.name||id}</span>
+                          : <span className="bc-item" onClick={()=>goBack(setCgFocus,setCgHistory,cgHistory,i)}>{fn?.name||id}</span>}
+                      </React.Fragment>);
+                  })}
+              {cgHistory.length > 0 &&
+                <button onClick={()=>goBack(setCgFocus,setCgHistory,cgHistory,cgHistory.length-1)}
+                  style={{marginLeft:"auto",background:"var(--border)",border:"none",color:"var(--text)",padding:"2px 8px",borderRadius:3,cursor:"pointer",fontSize:10}}>
+                  ← Back
+                </button>}
             </div>
-          ) : !focusId ? (
-            <div className="drop-zone">
-              <div className="drop-title" style={{fontSize:14}}>
-                {callgraph.totalFunctions.toLocaleString()} functions loaded
-              </div>
-              <div className="drop-sub">Search a function in the sidebar, or click one to begin</div>
+            <div className="graph-wrap">
+              {isLoading ? <div className="loading"><div className="spinner"/><span style={{color:"var(--muted)"}}>Loading…</span></div>
+               : !cgData  ? <div className="drop-zone"><div className="drop-title">Call Graph</div><div className="drop-sub">Load callgraph.json to explore function calls</div></div>
+               : !cgFocus ? <div className="drop-zone"><div className="drop-title" style={{fontSize:14}}>{cgData.totalFunctions?.toLocaleString()} functions loaded</div><div className="drop-sub">Search a function in the sidebar</div></div>
+               : <Graph graphData={cgGraphData} onNodeClick={navigate(setCgFocus,setCgHistory)} />}
+              {cgFocus && <div className="legend">
+                <div className="leg-item"><div className="leg-dot" style={{background:"#1f6feb",border:"2px solid #58a6ff"}}/> Focus</div>
+                <div className="leg-item"><div className="leg-dot" style={{background:"#1a4c2a",border:"2px solid #3fb950"}}/> Calls</div>
+                <div className="leg-item"><div className="leg-dot" style={{background:"#4a3000",border:"2px solid #d29922"}}/> Called by</div>
+              </div>}
             </div>
-          ) : (
-            <Graph graphData={graphData} onNodeClick={navigate} />
-          )}
+          </>
+        )}
 
-          {/* Legend */}
-          {focusId && (
-            <div className="legend">
-              <div className="leg-item"><div className="leg-dot" style={{background:"#1f6feb",border:"2px solid #58a6ff"}} />Focus</div>
-              <div className="leg-item"><div className="leg-dot" style={{background:"#1a4c2a",border:"2px solid #3fb950"}} />Callees</div>
-              <div className="leg-item"><div className="leg-dot" style={{background:"#4a3000",border:"2px solid #d29922"}} />Callers</div>
-              <div className="leg-item" style={{color:"var(--muted)",fontSize:10}}>
-                Rings = package colour
-              </div>
+        {/* ── Dep Graph tab ── */}
+        {activeTab==="deps" && (
+          <>
+            <div className="breadcrumb">
+              {depHistory_.length === 0
+                ? <span className="bc-empty">Search a package to start</span>
+                : depHistory_.map((id,i) => {
+                    const isLast = i===depHistory_.length-1;
+                    const pkg = depsData?.packages[id];
+                    return (
+                      <React.Fragment key={id+i}>
+                        {i>0 && <span className="bc-sep">›</span>}
+                        {isLast
+                          ? <span className="bc-current">{pkg?.name||id.split("/").pop()}</span>
+                          : <span className="bc-item" onClick={()=>goBack(setDepFocus,setDepHistory,depHistory,i)}>{pkg?.name||id.split("/").pop()}</span>}
+                      </React.Fragment>);
+                  })}
+              {depHistory.length > 0 &&
+                <button onClick={()=>goBack(setDepFocus,setDepHistory,depHistory,depHistory.length-1)}
+                  style={{marginLeft:"auto",background:"var(--border)",border:"none",color:"var(--text)",padding:"2px 8px",borderRadius:3,cursor:"pointer",fontSize:10}}>
+                  ← Back
+                </button>}
             </div>
-          )}
-        </div>
+            <div className="graph-wrap">
+              {isLoading ? <div className="loading"><div className="spinner"/><span style={{color:"var(--muted)"}}>Loading deps.json…</span></div>
+               : !depsData  ? <div className="drop-zone"><div className="drop-title">Dependency Graph</div><div className="drop-sub">Run: <code style={{color:"var(--accent)"}}>parse.exe --mode deps --repo ../teleport</code><br/>then reload this tab</div></div>
+               : !depFocus  ? <div className="drop-zone"><div className="drop-title" style={{fontSize:14}}>{depsData.totalPackages} packages loaded</div><div className="drop-sub">Search a package in the sidebar</div></div>
+               : <Graph graphData={depGraphData} onNodeClick={navigate(setDepFocus,setDepHistory)} />}
+              {depFocus && <div className="legend">
+                <div className="leg-item"><div className="leg-dot" style={{background:"#1f6feb",border:"2px solid #58a6ff"}}/> Focus</div>
+                <div className="leg-item"><div className="leg-dot" style={{background:"#1a4c2a",border:"2px solid #3fb950"}}/> Imports</div>
+                <div className="leg-item"><div className="leg-dot" style={{background:"#4a3000",border:"2px solid #d29922"}}/> Imported by</div>
+              </div>}
+            </div>
+          </>
+        )}
+
+        {/* ── Hotspot tab ── */}
+        {activeTab==="hotspot" && (
+          isLoading
+            ? <div className="loading"><div className="spinner"/><span style={{color:"var(--muted)"}}>Loading hotspot.json…</span></div>
+            : <HotspotView data={hotspotData} />
+        )}
       </div>
     </div>
   );

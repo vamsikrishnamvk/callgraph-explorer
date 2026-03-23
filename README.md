@@ -1,29 +1,49 @@
-# Call Graph Explorer
+# Code Explorer
 
-An interactive, browser-based function call graph explorer for large codebases.
+Three interactive, browser-based analysis tools for Go repositories — all in one viewer,
+no build step required.
 
-Point it at any **Go** repository, parse it in minutes, and explore every function's
-call chain interactively in the browser — click a function to see what it calls and
-what calls it, drill in level by level, and navigate back with a breadcrumb trail.
+| Tab | What it shows |
+|-----|---------------|
+| **Call Graph** | Every function and who calls whom. Click to drill in level by level. |
+| **Dep Graph** | Every internal package and which packages it imports. Click to explore dependencies. |
+| **Hotspots** | A heatmap treemap of your codebase — files sized by lines of code, coloured by git commit churn (green = stable, red = hotspot). |
 
 > Tested on [Teleport](https://github.com/gravitational/teleport) —
-> **3,719 files · 68,767 functions** parsed in under 2 minutes.
+> **3,719 files · 68,767 functions · 942 packages**
 
 ---
 
 ## Demo
 
+**Call Graph**
 ```
 Search: "NewServer"
-  └─ Click result → focus on auth.NewServer
-       ├─ [green] validateConfig     ← click to drill in
+  └─ Click → focus on auth.NewServer
+       ├─ [green] validateConfig    ← click to drill deeper
        ├─ [green] NewLogger
-       ├─ [green] setupTLS
-       └─ [orange] main.run          ← who calls NewServer
+       └─ [orange] main.run         ← who calls this function
 ```
 
-Each click re-centres the graph on the selected function.
-The breadcrumb at the top lets you retrace your steps.
+**Dep Graph**
+```
+Search: "auth"
+  └─ Click → focus on lib/auth package
+       ├─ [green] lib/utils         ← packages auth imports
+       ├─ [green] lib/tlsca
+       └─ [orange] lib/proxy        ← packages that import auth
+```
+
+**Hotspots**
+```
+Treemap — each rectangle is a file
+  Size   = lines of code
+  Colour = git churn (green → yellow → red)
+  Click directory → zoom in
+  Click file      → highlight in sortable table
+```
+
+Each view has a breadcrumb trail and a Back button to retrace navigation.
 
 ---
 
@@ -134,35 +154,48 @@ cd ..
 
 ### Step 2 — Parse a repository
 
+The parser has three modes. Run whichever analyses you want:
+
 ```bash
 # macOS / Linux
-./parse.sh --repo /path/to/repo --output callgraph.json
+./parse.sh --mode callgraph --repo /path/to/repo   # → callgraph.json
+./parse.sh --mode deps      --repo /path/to/repo   # → deps.json
+./parse.sh --mode hotspot   --repo /path/to/repo   # → hotspot.json
 
 # Windows
-parse.exe --repo "C:\path\to\repo" --output callgraph.json
+parse.exe --mode callgraph --repo "C:\path\to\repo"
+parse.exe --mode deps      --repo "C:\path\to\repo"
+parse.exe --mode hotspot   --repo "C:\path\to\repo"
 ```
+
+> **Note on hotspot mode:** requires a full git clone with history.
+> A `--depth 1` shallow clone will show only 1 commit per file.
+> For meaningful churn data, use a full clone or `--depth 500` or deeper.
 
 **All flags:**
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--mode` | `callgraph` | Analysis mode: `callgraph`, `deps`, or `hotspot` |
 | `--repo` | `.` | Path to the root of the Go repository |
-| `--output` | `callgraph.json` | Output JSON file path |
-| `--pkg` | _(all)_ | Only parse files whose path contains this string (e.g. `lib/auth`) |
-| `--max` | `0` (all) | Cap the number of files parsed — useful for a quick test run |
-| `--tests` | `false` | Include `_test.go` files |
+| `--output` | `<mode>.json` | Output JSON file path |
+| `--pkg` | _(all)_ | Only parse files whose path contains this string — `callgraph` mode only |
+| `--max` | `0` (all) | Cap number of files — `callgraph` mode only |
+| `--tests` | `false` | Include `_test.go` files — `callgraph` mode only |
 
 **Examples:**
 
 ```bash
-# Parse the whole repo
-./parse.sh --repo ../teleport --output callgraph.json
+# Generate all three analyses for a repo
+./parse.sh --mode callgraph --repo ../myrepo
+./parse.sh --mode deps      --repo ../myrepo
+./parse.sh --mode hotspot   --repo ../myrepo
 
-# Only parse the auth subsystem of a large repo
-./parse.sh --repo ../teleport --pkg lib/auth --output auth.json
+# Only parse the auth subsystem of a large repo (call graph)
+./parse.sh --mode callgraph --repo ../teleport --pkg lib/auth --output auth.json
 
 # Quick smoke-test on first 200 files
-./parse.sh --repo ../teleport --max 200 --output sample.json
+./parse.sh --mode callgraph --repo ../teleport --max 200 --output sample.json
 ```
 
 ---
@@ -192,45 +225,68 @@ Open **http://localhost:8080** in your browser.
 
 ## Using the Viewer
 
-### Search
+The viewer has three tabs at the top. Each tab lazy-loads its own JSON file the
+first time you switch to it, or you can click the **Open** button in the sidebar
+to load any `.json` file manually.
 
-Type any function or package name in the **search bar** (sidebar, top-left).
-Results update as you type. Click any result to focus on that function.
+---
 
-### The Graph
+### Call Graph tab
+
+**Search** — type any function or package name in the sidebar search bar.
 
 | Visual | Meaning |
 |--------|---------|
-| Large blue node (centre) | The function currently in focus |
-| Green nodes | Functions this function **calls** (callees) |
-| Orange nodes | Functions that **call** this function (callers) |
-| Coloured outer ring | Each package gets a unique colour |
-| Arrow direction | Direction of the call |
-| Dashed arrows | Calls to/from external packages |
-
-### Interactions
+| Large blue node | Function currently in focus |
+| Green nodes | Functions this function **calls** |
+| Orange nodes | Functions that **call** this function |
+| Coloured ring | Package colour (each package gets a unique colour) |
 
 | Action | Result |
 |--------|--------|
 | Click a node | That function becomes the new focus |
-| Hover a node | Tooltip: package, file path, line number |
-| Drag a node | Reposition it on the canvas |
-| Scroll / pinch | Zoom in and out |
-| Click breadcrumb item | Jump back to that point in history |
-| Click **← Back** | One step back |
+| Hover a node | Tooltip: package, file, line number |
+| Drag nodes | Reposition on canvas |
+| Scroll / pinch | Zoom |
+| Click breadcrumb | Jump back in history |
 
-### Sidebar
+The sidebar shows the full **Calls** and **Called by** lists — click any item to navigate.
 
-Shows the focused function's full details:
-- Name, receiver type (for methods), package
-- File path and line number
-- **Calls** list (green) — every function it calls; click any to navigate into it
-- **Called by** list (orange) — every function that calls it; click any to trace upstream
+---
 
-### Loading a different callgraph
+### Dep Graph tab
 
-Click **"Load different callgraph.json"** at the bottom of the sidebar to open any
-`.json` file — useful for switching between repos or subsystems without restarting.
+Same interaction model as Call Graph, but nodes are **packages** not functions.
+
+| Visual | Meaning |
+|--------|---------|
+| Blue node | Package in focus |
+| Green nodes | Packages this package **imports** |
+| Orange nodes | Packages that **import** this package |
+
+The sidebar shows import count, file count, and full import/imported-by lists.
+
+---
+
+### Hotspots tab
+
+A D3 treemap where every file in the repo is a rectangle.
+
+| Visual | Meaning |
+|--------|---------|
+| Rectangle size | Lines of code |
+| Green colour | Low git churn (stable file) |
+| Red colour | High git churn (frequently changed = hotspot) |
+
+| Action | Result |
+|--------|--------|
+| Click a directory area | Zoom into that directory |
+| Click repo name in breadcrumb | Zoom back to root |
+| Click a file rectangle | Highlight it in the table |
+| Hover | Tooltip: path, commits, authors, LOC |
+
+The **sortable table** in the sidebar lists all files sorted by commit count by default.
+Click column headers to re-sort by authors or lines of code. Type to filter by filename.
 
 ---
 

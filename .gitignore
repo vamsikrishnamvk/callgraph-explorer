@@ -1,5 +1,7 @@
 # Generated files — do not commit
 callgraph.json
+deps.json
+hotspot.json
 *.json
 
 # Compiled binaries
