@@ -1,0 +1,13 @@
+# Generated files — do not commit
+callgraph.json
+*.json
+
+# Compiled binaries
+parse.exe
+parse
+parse-linux
+parse-darwin
+
+# OS
+.DS_Store
+Thumbs.db

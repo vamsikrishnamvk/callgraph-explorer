@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Call Graph Explorer</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --border:   #30363d;
+    --text:     #e6edf3;
+    --muted:    #8b949e;
+    --accent:   #58a6ff;
+    --green:    #3fb950;
+    --orange:   #d29922;
+    --red:      #f85149;
+    --purple:   #bc8cff;
+    --node-focus:   #58a6ff;
+    --node-callee:  #3fb950;
+    --node-caller:  #d29922;
+    --node-ext:     #6e7681;
+    --link-color:   #444c56;
+  }
+  html, body, #root { height: 100%; width: 100%; overflow: hidden; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background: var(--bg); color: var(--text); font-size: 13px; }
+
+  /* ── Layout ── */
+  .layout { display: flex; height: 100vh; }
+  .sidebar { width: 320px; min-width: 260px; max-width: 400px;
+             background: var(--surface); border-right: 1px solid var(--border);
+             display: flex; flex-direction: column; overflow: hidden; }
+  .main    { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Topbar ── */
+  .topbar { height: 44px; background: var(--surface); border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; padding: 0 16px; gap: 10px; flex-shrink: 0; }
+  .repo-badge { font-weight: 600; font-size: 14px; color: var(--accent); }
+  .stats-badge { font-size: 11px; color: var(--muted); margin-left: auto; }
+
+  /* ── Breadcrumb ── */
+  .breadcrumb { display: flex; align-items: center; padding: 6px 14px;
+                background: var(--bg); border-bottom: 1px solid var(--border);
+                flex-shrink: 0; gap: 4px; overflow-x: auto; white-space: nowrap; min-height: 34px; }
+  .breadcrumb::-webkit-scrollbar { height: 4px; }
+  .breadcrumb::-webkit-scrollbar-thumb { background: var(--border); }
+  .bc-item { color: var(--accent); cursor: pointer; font-size: 12px; }
+  .bc-item:hover { text-decoration: underline; }
+  .bc-sep { color: var(--muted); font-size: 11px; }
+  .bc-current { color: var(--text); font-size: 12px; font-weight: 600; }
+  .bc-empty { color: var(--muted); font-size: 12px; font-style: italic; }
+
+  /* ── Graph canvas ── */
+  .graph-wrap { flex: 1; position: relative; overflow: hidden; }
+  #graph-svg { width: 100%; height: 100%; cursor: grab; }
+  #graph-svg:active { cursor: grabbing; }
+
+  /* ── Sidebar: search ── */
+  .search-section { padding: 12px; border-bottom: 1px solid var(--border); }
+  .search-input { width: 100%; background: var(--bg); border: 1px solid var(--border);
+                  color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px;
+                  outline: none; }
+  .search-input:focus { border-color: var(--accent); }
+  .search-results { margin-top: 6px; max-height: 240px; overflow-y: auto; }
+  .search-results::-webkit-scrollbar { width: 4px; }
+  .search-results::-webkit-scrollbar-thumb { background: var(--border); }
+  .search-item { padding: 6px 8px; border-radius: 4px; cursor: pointer;
+                 border-bottom: 1px solid var(--border); }
+  .search-item:hover { background: var(--border); }
+  .search-item-name { font-weight: 600; color: var(--text); }
+  .search-item-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .search-placeholder { color: var(--muted); font-size: 12px; padding: 8px; text-align: center; }
+
+  /* ── Sidebar: function detail ── */
+  .detail-section { flex: 1; overflow-y: auto; padding: 12px; }
+  .detail-section::-webkit-scrollbar { width: 4px; }
+  .detail-section::-webkit-scrollbar-thumb { background: var(--border); }
+  .detail-empty { color: var(--muted); font-size: 12px; text-align: center; margin-top: 40px; }
+
+  .fn-title { font-size: 15px; font-weight: 700; color: var(--text); word-break: break-all; }
+  .fn-recv  { font-size: 12px; color: var(--purple); margin-top: 2px; }
+  .fn-meta  { margin-top: 8px; }
+  .fn-meta-row { display: flex; gap: 6px; margin-bottom: 4px; align-items: baseline; }
+  .fn-label { font-size: 11px; color: var(--muted); min-width: 52px; }
+  .fn-value { font-size: 12px; color: var(--text); word-break: break-all; }
+  .fn-link  { color: var(--accent); cursor: pointer; font-size: 12px; }
+  .fn-link:hover { text-decoration: underline; }
+
+  .section-title { font-size: 11px; font-weight: 600; color: var(--muted);
+                   text-transform: uppercase; letter-spacing: .05em;
+                   margin: 14px 0 6px; display: flex; align-items: center; gap: 6px; }
+  .count-badge { background: var(--border); color: var(--text); border-radius: 10px;
+                 padding: 1px 7px; font-size: 10px; font-weight: 700; }
+
+  .fn-list { display: flex; flex-direction: column; gap: 2px; }
+  .fn-list-item { padding: 5px 8px; border-radius: 4px; cursor: pointer;
+                  border: 1px solid transparent; }
+  .fn-list-item:hover { background: var(--border); border-color: var(--border); }
+  .fn-list-item .item-name { font-weight: 600; font-size: 12px; }
+  .fn-list-item .item-pkg  { font-size: 11px; color: var(--muted); }
+  .callee-item .item-name  { color: var(--green); }
+  .caller-item .item-name  { color: var(--orange); }
+
+  /* ── Drop zone ── */
+  .drop-zone { flex: 1; display: flex; flex-direction: column; align-items: center;
+               justify-content: center; gap: 14px; }
+  .drop-title { font-size: 18px; font-weight: 700; color: var(--text); }
+  .drop-sub   { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.6; }
+  .drop-btn   { background: var(--accent); color: #0d1117; border: none; border-radius: 6px;
+                padding: 10px 20px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .drop-btn:hover { opacity: .85; }
+  .drop-hint  { font-size: 11px; color: var(--muted); }
+  #file-input { display: none; }
+
+  /* ── Loading ── */
+  .loading { flex: 1; display: flex; flex-direction: column; align-items: center;
+             justify-content: center; gap: 12px; }
+  .spinner { width: 36px; height: 36px; border: 3px solid var(--border);
+             border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Legend ── */
+  .legend { position: absolute; bottom: 14px; right: 14px;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; padding: 8px 12px; display: flex; gap: 14px; }
+  .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+  .leg-dot  { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Tooltip ── */
+  #tooltip { position: fixed; pointer-events: none; background: var(--surface);
+             border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px;
+             font-size: 12px; line-height: 1.6; z-index: 999; display: none; max-width: 300px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="tooltip"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ── Fuzzy search ──────────────────────────────────────────────────────────────
+function fuzzyMatch(str, query) {
+  const s = str.toLowerCase(), q = query.toLowerCase();
+  if (s.includes(q)) return true;
+  let si = 0, qi = 0;
+  while (si < s.length && qi < q.length) {
+    if (s[si] === q[qi]) qi++;
+    si++;
+  }
+  return qi === q.length;
+}
+
+// ── Package colour map ────────────────────────────────────────────────────────
+const PKG_COLOURS = [
+  "#58a6ff","#3fb950","#d29922","#bc8cff","#f78166",
+  "#39d353","#79c0ff","#ffa657","#ff7b72","#56d364",
+];
+const pkgColorCache = {};
+let pkgColorIdx = 0;
+function pkgColor(pkg) {
+  if (!pkgColorCache[pkg]) pkgColorCache[pkg] = PKG_COLOURS[pkgColorIdx++ % PKG_COLOURS.length];
+  return pkgColorCache[pkg];
+}
+
+// ── Graph component (D3 controlled SVG) ──────────────────────────────────────
+function Graph({ graphData, onNodeClick }) {
+  const svgRef = useRef(null);
+  const simRef = useRef(null);
+
+  useEffect(() => {
+    if (!graphData || !svgRef.current) return;
+
+    const svg = d3.select(svgRef.current);
+    svg.selectAll("*").remove();
+
+    const W = svgRef.current.clientWidth  || 800;
+    const H = svgRef.current.clientHeight || 600;
+
+    const g = svg.append("g");
+
+    // Zoom + pan
+    const zoom = d3.zoom().scaleExtent([0.1, 4])
+      .on("zoom", (e) => g.attr("transform", e.transform));
+    svg.call(zoom);
+
+    // Arrow markers
+    const defs = svg.append("defs");
+    ["callee", "caller", "ext"].forEach(t => {
+      defs.append("marker")
+        .attr("id", `arrow-${t}`)
+        .attr("viewBox", "0 -5 10 10")
+        .attr("refX", 22).attr("refY", 0)
+        .attr("markerWidth", 6).attr("markerHeight", 6)
+        .attr("orient", "auto")
+        .append("path")
+        .attr("d", "M0,-5L10,0L0,5")
+        .attr("fill", t === "callee" ? "#3fb950" : t === "caller" ? "#d29922" : "#444c56");
+    });
+
+    const nodes = graphData.nodes.map(d => ({ ...d }));
+    const links = graphData.links.map(d => ({ ...d }));
+
+    // Fix focus node at center
+    const focus = nodes.find(n => n.role === "focus");
+    if (focus) { focus.fx = W / 2; focus.fy = H / 2; }
+
+    // Simulation
+    const sim = d3.forceSimulation(nodes)
+      .force("link", d3.forceLink(links).id(d => d.id).distance(120).strength(0.8))
+      .force("charge", d3.forceManyBody().strength(-400))
+      .force("x", d3.forceX(W / 2).strength(n => n.role === "focus" ? 0 : 0.05))
+      .force("y", d3.forceY(H / 2).strength(n => n.role === "focus" ? 0 : 0.05))
+      .force("collide", d3.forceCollide(30));
+    simRef.current = sim;
+
+    // Links
+    const link = g.append("g").selectAll("line").data(links).enter().append("line")
+      .attr("stroke", d => {
+        const src = nodes.find(n => n.id === (d.source.id || d.source));
+        const tgt = nodes.find(n => n.id === (d.target.id || d.target));
+        if (tgt && tgt.role === "callee") return "#3fb950";
+        if (src && src.role === "caller") return "#d29922";
+        return "#444c56";
+      })
+      .attr("stroke-width", 1.5)
+      .attr("stroke-opacity", 0.6)
+      .attr("marker-end", d => {
+        const tgt = nodes.find(n => n.id === (d.target.id || d.target));
+        return tgt && tgt.role === "callee" ? "url(#arrow-callee)" : "url(#arrow-caller)";
+      });
+
+    // Node groups
+    const nodeG = g.append("g").selectAll("g").data(nodes).enter().append("g")
+      .attr("cursor", "pointer")
+      .call(d3.drag()
+        .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on("drag",  (e, d) => { d.fx = e.x; d.fy = e.y; })
+        .on("end",   (e, d) => { if (!e.active) sim.alphaTarget(0); if (d.role !== "focus") { d.fx = null; d.fy = null; } })
+      )
+      .on("click", (e, d) => { e.stopPropagation(); onNodeClick(d.id); })
+      .on("mouseover", (e, d) => {
+        const tip = document.getElementById("tooltip");
+        tip.style.display = "block";
+        tip.innerHTML = `<strong>${d.name}</strong><br/><span style="color:#8b949e">${d.pkg}</span><br/>${d.file}:${d.line}`;
+      })
+      .on("mousemove", (e) => {
+        const tip = document.getElementById("tooltip");
+        tip.style.left = (e.clientX + 14) + "px";
+        tip.style.top  = (e.clientY - 8)  + "px";
+      })
+      .on("mouseout", () => { document.getElementById("tooltip").style.display = "none"; });
+
+    // Circles
+    nodeG.append("circle")
+      .attr("r", d => d.role === "focus" ? 22 : 14)
+      .attr("fill", d => {
+        if (d.role === "focus")   return "#1f6feb";
+        if (d.role === "callee")  return "#1a4c2a";
+        if (d.role === "caller")  return "#4a3000";
+        return "#21262d";
+      })
+      .attr("stroke", d => {
+        if (d.role === "focus")   return "#58a6ff";
+        if (d.role === "callee")  return "#3fb950";
+        if (d.role === "caller")  return "#d29922";
+        return "#444c56";
+      })
+      .attr("stroke-width", d => d.role === "focus" ? 3 : 1.5);
+
+    // Package colour ring
+    nodeG.append("circle")
+      .attr("r", d => d.role === "focus" ? 26 : 17)
+      .attr("fill", "none")
+      .attr("stroke", d => pkgColor(d.pkg))
+      .attr("stroke-width", 2)
+      .attr("stroke-opacity", 0.5)
+      .attr("stroke-dasharray", d => d.role === "focus" ? "none" : "3,2");
+
+    // Labels
+    nodeG.append("text")
+      .attr("text-anchor", "middle")
+      .attr("dy", d => d.role === "focus" ? 38 : 27)
+      .attr("fill", "#e6edf3")
+      .attr("font-size", d => d.role === "focus" ? "12px" : "11px")
+      .attr("font-weight", d => d.role === "focus" ? "700" : "400")
+      .text(d => d.name.length > 20 ? d.name.slice(0, 18) + "…" : d.name);
+
+    // Role badge
+    nodeG.append("text")
+      .attr("text-anchor", "middle")
+      .attr("dy", d => d.role === "focus" ? 50 : 37)
+      .attr("fill", "#6e7681")
+      .attr("font-size", "9px")
+      .text(d => d.role === "focus" ? d.pkg : "");
+
+    // Tick
+    sim.on("tick", () => {
+      link
+        .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+      nodeG.attr("transform", d => `translate(${d.x},${d.y})`);
+    });
+
+    // Initial zoom to fit
+    svg.call(zoom.transform, d3.zoomIdentity.translate(0, 0).scale(1));
+
+    return () => { sim.stop(); };
+  }, [graphData]);
+
+  return <svg id="graph-svg" ref={svgRef} />;
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+function Sidebar({ callgraph, focusId, onNavigate, search, setSearch, searchResults }) {
+  const fn = focusId && callgraph ? callgraph.functions[focusId] : null;
+
+  const callees = useMemo(() => {
+    if (!fn || !callgraph) return [];
+    return (fn.calls || []).map(id => callgraph.functions[id]).filter(Boolean);
+  }, [fn, callgraph]);
+
+  const callers = useMemo(() => {
+    if (!fn || !callgraph) return [];
+    return (fn.callers || []).map(id => callgraph.functions[id]).filter(Boolean);
+  }, [fn, callgraph]);
+
+  return (
+    <>
+      {/* Search */}
+      <div className="search-section">
+        <input
+          className="search-input"
+          placeholder="Search functions…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        {search.length > 0 && (
+          <div className="search-results">
+            {searchResults.length === 0
+              ? <div className="search-placeholder">No results</div>
+              : searchResults.slice(0, 80).map(f => (
+                  <div key={f.id} className="search-item" onClick={() => { onNavigate(f.id); setSearch(""); }}>
+                    <div className="search-item-name">{f.name}</div>
+                    <div className="search-item-meta">{f.pkg} · {f.file}:{f.line}</div>
+                  </div>
+                ))
+            }
+          </div>
+        )}
+      </div>
+
+      {/* Function detail */}
+      <div className="detail-section">
+        {!fn ? (
+          <div className="detail-empty">Search or click a node to explore</div>
+        ) : (
+          <>
+            <div className="fn-title">{fn.name}</div>
+            {fn.recv && <div className="fn-recv">({fn.recv})</div>}
+            <div className="fn-meta">
+              <div className="fn-meta-row">
+                <span className="fn-label">Package</span>
+                <span className="fn-value" style={{color: pkgColor(fn.pkg)}}>{fn.pkg}</span>
+              </div>
+              <div className="fn-meta-row">
+                <span className="fn-label">File</span>
+                <span className="fn-value fn-link">{fn.file}:{fn.line}</span>
+              </div>
+            </div>
+
+            {/* Callees */}
+            <div className="section-title">
+              Calls
+              <span className="count-badge">{callees.length}</span>
+            </div>
+            {callees.length === 0
+              ? <div style={{color:"var(--muted)",fontSize:11}}>No internal calls</div>
+              : <div className="fn-list">
+                  {callees.map(c => (
+                    <div key={c.id} className="fn-list-item callee-item" onClick={() => onNavigate(c.id)}>
+                      <div className="item-name">{c.name}</div>
+                      <div className="item-pkg">{c.pkg}</div>
+                    </div>
+                  ))}
+                </div>
+            }
+
+            {/* Callers */}
+            <div className="section-title">
+              Called by
+              <span className="count-badge">{callers.length}</span>
+            </div>
+            {callers.length === 0
+              ? <div style={{color:"var(--muted)",fontSize:11}}>No known callers</div>
+              : <div className="fn-list">
+                  {callers.map(c => (
+                    <div key={c.id} className="fn-list-item caller-item" onClick={() => onNavigate(c.id)}>
+                      <div className="item-name">{c.name}</div>
+                      <div className="item-pkg">{c.pkg}</div>
+                    </div>
+                  ))}
+                </div>
+            }
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── Main App ──────────────────────────────────────────────────────────────────
+function App() {
+  const [callgraph, setCallgraph]   = useState(null);
+  const [loading, setLoading]       = useState(false);
+  const [focusId, setFocusId]       = useState(null);
+  const [history, setHistory]       = useState([]);   // stack of previous focusIds
+  const [search, setSearch]         = useState("");
+  const fileInputRef = useRef(null);
+
+  // Try to auto-load callgraph.json on mount
+  useEffect(() => {
+    setLoading(true);
+    fetch("callgraph.json")
+      .then(r => { if (!r.ok) throw new Error("not found"); return r.json(); })
+      .then(data => { setCallgraph(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  // Navigate to a function (push history)
+  const navigate = useCallback((id) => {
+    setFocusId(prev => {
+      if (prev) setHistory(h => [...h, prev]);
+      return id;
+    });
+  }, []);
+
+  // Breadcrumb back
+  const goBack = useCallback((idx) => {
+    setHistory(h => {
+      const prev = h[idx];
+      setFocusId(prev);
+      return h.slice(0, idx);
+    });
+  }, []);
+
+  // Build graph data for the D3 component
+  const graphData = useMemo(() => {
+    if (!callgraph || !focusId) return null;
+    const fn = callgraph.functions[focusId];
+    if (!fn) return null;
+
+    const nodesMap = {};
+    const links = [];
+
+    nodesMap[focusId] = { ...fn, id: focusId, role: "focus" };
+
+    (fn.calls || []).forEach(calleeId => {
+      const callee = callgraph.functions[calleeId];
+      if (callee && !nodesMap[calleeId]) {
+        nodesMap[calleeId] = { ...callee, id: calleeId, role: "callee" };
+      }
+      if (callgraph.functions[calleeId]) {
+        links.push({ source: focusId, target: calleeId });
+      }
+    });
+
+    (fn.callers || []).forEach(callerId => {
+      const caller = callgraph.functions[callerId];
+      if (caller && !nodesMap[callerId]) {
+        nodesMap[callerId] = { ...caller, id: callerId, role: "caller" };
+      }
+      if (callgraph.functions[callerId]) {
+        links.push({ source: callerId, target: focusId });
+      }
+    });
+
+    return { nodes: Object.values(nodesMap), links };
+  }, [callgraph, focusId]);
+
+  // Search results
+  const searchResults = useMemo(() => {
+    if (!callgraph || search.length < 2) return [];
+    return Object.values(callgraph.functions)
+      .filter(f => fuzzyMatch(f.name, search) || fuzzyMatch(f.pkg, search))
+      .slice(0, 100);
+  }, [callgraph, search]);
+
+  // Load from file picker
+  const loadFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLoading(true);
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        setCallgraph(data);
+        setFocusId(null);
+        setHistory([]);
+      } catch { alert("Invalid JSON file"); }
+      setLoading(false);
+    };
+    reader.readAsText(file);
+  };
+
+  // ── Render ──
+  const breadcrumbItems = [...history, focusId].filter(Boolean);
+
+  if (loading) {
+    return (
+      <div className="layout">
+        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:14}}>
+          <div className="spinner" />
+          <div style={{color:"var(--muted)"}}>Loading callgraph.json…</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="layout">
+      {/* Sidebar */}
+      <div className="sidebar">
+        <div className="topbar">
+          <span className="repo-badge">{callgraph ? callgraph.repo : "Call Graph Explorer"}</span>
+          {callgraph && (
+            <span className="stats-badge">
+              {callgraph.totalFunctions.toLocaleString()} fns · {callgraph.totalFiles.toLocaleString()} files
+            </span>
+          )}
+        </div>
+
+        {callgraph ? (
+          <Sidebar
+            callgraph={callgraph}
+            focusId={focusId}
+            onNavigate={navigate}
+            search={search}
+            setSearch={setSearch}
+            searchResults={searchResults}
+          />
+        ) : (
+          <div style={{padding:16}}>
+            <div style={{color:"var(--muted)",fontSize:12,lineHeight:1.6}}>
+              Load a <strong style={{color:"var(--text)"}}>callgraph.json</strong> file to start exploring.
+            </div>
+          </div>
+        )}
+
+        {/* File load button always visible */}
+        <div style={{padding:12,borderTop:"1px solid var(--border)",flexShrink:0}}>
+          <input type="file" id="file-input" ref={fileInputRef} accept=".json" onChange={loadFile} />
+          <button className="drop-btn" style={{width:"100%",fontSize:12}}
+            onClick={() => fileInputRef.current.click()}>
+            {callgraph ? "Load different callgraph.json" : "Open callgraph.json"}
+          </button>
+        </div>
+      </div>
+
+      {/* Main */}
+      <div className="main">
+        <div className="topbar" style={{borderLeft:"none"}}>
+          {/* Breadcrumb */}
+          <div className="breadcrumb" style={{flex:1,border:"none",padding:0,background:"transparent"}}>
+            {breadcrumbItems.length === 0
+              ? <span className="bc-empty">Select a function to start</span>
+              : breadcrumbItems.map((id, i) => {
+                  const isLast = i === breadcrumbItems.length - 1;
+                  const fn = callgraph?.functions[id];
+                  return (
+                    <React.Fragment key={id + i}>
+                      {i > 0 && <span className="bc-sep">›</span>}
+                      {isLast
+                        ? <span className="bc-current">{fn?.name || id}</span>
+                        : <span className="bc-item" onClick={() => goBack(i)}>{fn?.name || id}</span>
+                      }
+                    </React.Fragment>
+                  );
+                })
+            }
+          </div>
+          {history.length > 0 && (
+            <button onClick={() => goBack(history.length - 1)}
+              style={{background:"var(--border)",border:"none",color:"var(--text)",
+                      padding:"4px 10px",borderRadius:4,cursor:"pointer",fontSize:11,flexShrink:0}}>
+              ← Back
+            </button>
+          )}
+        </div>
+
+        {/* Graph or placeholder */}
+        <div className="graph-wrap">
+          {!callgraph ? (
+            <div className="drop-zone">
+              <div className="drop-title">Call Graph Explorer</div>
+              <div className="drop-sub">
+                Run the Go parser to generate <strong>callgraph.json</strong>,<br/>
+                then serve this folder with Python and open in browser.
+              </div>
+              <button className="drop-btn" onClick={() => fileInputRef.current?.click()}>
+                Open callgraph.json
+              </button>
+              <div className="drop-hint">or run: python -m http.server 8080</div>
+            </div>
+          ) : !focusId ? (
+            <div className="drop-zone">
+              <div className="drop-title" style={{fontSize:14}}>
+                {callgraph.totalFunctions.toLocaleString()} functions loaded
+              </div>
+              <div className="drop-sub">Search a function in the sidebar, or click one to begin</div>
+            </div>
+          ) : (
+            <Graph graphData={graphData} onNodeClick={navigate} />
+          )}
+
+          {/* Legend */}
+          {focusId && (
+            <div className="legend">
+              <div className="leg-item"><div className="leg-dot" style={{background:"#1f6feb",border:"2px solid #58a6ff"}} />Focus</div>
+              <div className="leg-item"><div className="leg-dot" style={{background:"#1a4c2a",border:"2px solid #3fb950"}} />Callees</div>
+              <div className="leg-item"><div className="leg-dot" style={{background:"#4a3000",border:"2px solid #d29922"}} />Callers</div>
+              <div className="leg-item" style={{color:"var(--muted)",fontSize:10}}>
+                Rings = package colour
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
